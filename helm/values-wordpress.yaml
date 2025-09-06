@@ -1,0 +1,23 @@
+
+mariadb:
+  enabled: false
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: true
+  ingressClassName: alb
+  hostname: wordpress.${DOMAIN_NAME}
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/group.name: "wordpress"
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    cert-manager.io/cluster-issuer: "letsencrypt"
+  tls:
+    - hosts:
+        - wordpress.${DOMAIN_NAME}
+      secretName: wordpress-tls
