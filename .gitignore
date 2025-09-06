@@ -1,0 +1,51 @@
+# Terraform directories
+.terraform/
+.terraform.tfstate
+terraform.tfstate
+terraform.tfstate.*
+crash.log
+crash.*.log
+
+# Sensitive variable files
+*.tfvars
+*.tfvars.json
+!example.tfvars
+
+# Override files (rarely committed)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local environment / credentials
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Archives / temp
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# Python virtual env (in case of helper scripts)
+venv/
+.envrc
+
+# Node (if any tooling added later)
+node_modules/

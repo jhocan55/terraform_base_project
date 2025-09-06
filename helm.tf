@@ -15,7 +15,10 @@ resource "aws_iam_openid_connect_provider" "eks" {
 data "aws_iam_policy_document" "ebs_csi_assume" {
   statement {
     effect = "Allow"
-    principals { type = "Federated", identifiers = [aws_iam_openid_connect_provider.eks.arn] }
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
     actions = ["sts:AssumeRoleWithWebIdentity"]
     condition {
       test     = "StringEquals"
@@ -62,8 +65,11 @@ resource "kubernetes_storage_class_v1" "gp3" {
 data "aws_iam_policy_document" "alb_irsa" {
   statement {
     effect = "Allow"
-    actions   = ["sts:AssumeRoleWithWebIdentity"]
-    principals { type = "Federated", identifiers = [aws_iam_openid_connect_provider.eks.arn] }
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
     condition {
       test     = "StringEquals"
       variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
@@ -95,9 +101,18 @@ resource "helm_release" "aws_load_balancer_controller" {
   chart      = "aws-load-balancer-controller"
   version    = "1.8.1"
 
-  set { name = "clusterName", value = module.eks.cluster_name }
-  set { name = "serviceAccount.create", value = "true" }
-  set { name = "serviceAccount.name",   value = "aws-load-balancer-controller" }
+  set {
+    name  = "clusterName"
+    value = module.eks.cluster_name
+  }
+  set {
+    name  = "serviceAccount.create"
+    value = "true"
+  }
+  set {
+    name  = "serviceAccount.name"
+    value = "aws-load-balancer-controller"
+  }
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = aws_iam_role.alb_irsa.arn
@@ -112,8 +127,11 @@ resource "helm_release" "aws_load_balancer_controller" {
 data "aws_iam_policy_document" "extdns_irsa" {
   statement {
     effect = "Allow"
-    actions   = ["sts:AssumeRoleWithWebIdentity"]
-    principals { type = "Federated", identifiers = [aws_iam_openid_connect_provider.eks.arn] }
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
     condition {
       test     = "StringEquals"
       variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
@@ -157,15 +175,39 @@ resource "helm_release" "external_dns" {
   chart      = "external-dns"
   version    = "9.0.3"
 
-  set { name = "provider", value = "aws" }
-  set { name = "policy",   value = "sync" }
-  set { name = "sources[0]", value = "ingress" }
-  set { name = "domainFilters[0]", value = var.domain_name }
-  set { name = "registry", value = "txt" }
-  set { name = "txtOwnerId", value = module.eks.cluster_name }
+  set { 
+    name = "provider"         
+    value = "aws" 
+    }
+  set { 
+    name = "policy"           
+    value = "sync" 
+  }
+  set { 
+    name = "sources[0]"       
+    value = "ingress" 
+  }
+  set { 
+    name = "domainFilters[0]" 
+    value = var.domain_name 
+  }
+  set { 
+    name = "registry"         
+    value = "txt" 
+  }
+  set { 
+    name = "txtOwnerId"       
+    value = module.eks.cluster_name 
+  }
 
-  set { name = "serviceAccount.create", value = "true" }
-  set { name = "serviceAccount.name",   value = "external-dns" }
+  set {
+    name  = "serviceAccount.create"
+    value = "true"
+  }
+  set {
+    name  = "serviceAccount.name"
+    value = "external-dns"
+  }
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = aws_iam_role.extdns_irsa.arn
@@ -184,7 +226,10 @@ resource "helm_release" "cert_manager" {
   chart            = "cert-manager"
   version          = "v1.14.4"
   create_namespace = true
-  set { name = "installCRDs", value = "true" }
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
 }
 
 resource "kubernetes_manifest" "letsencrypt_clusterissuer" {
@@ -224,16 +269,32 @@ resource "helm_release" "wordpress" {
 
   values = [file("${path.module}/helm/values-wordpress.yaml")]
 
-  # domain + db settings
-  set { name = "ingress.hostname", value = var.wp_fqdn }
+  set {
+    name  = "ingress.hostname"
+    value = var.wp_fqdn
+  }
 
-  set { name = "externalDatabase.host",     value = module.rds.endpoint }
-  set { name = "externalDatabase.user",     value = var.db_username }
-  set { name = "externalDatabase.password", value = var.db_password }
-  set { name = "externalDatabase.database", value = var.db_name }
+  set {
+    name  = "externalDatabase.host"
+    value = module.rds.endpoint
+  }
+  set {
+    name  = "externalDatabase.user"
+    value = var.db_username
+  }
+  set {
+    name  = "externalDatabase.password"
+    value = var.db_password
+  }
+  set {
+    name  = "externalDatabase.database"
+    value = var.db_name
+  }
 
-  # ensure PVCs can bind
-  set { name = "persistence.storageClass",  value = kubernetes_storage_class_v1.gp3.metadata[0].name }
+  set {
+    name  = "persistence.storageClass"
+    value = kubernetes_storage_class_v1.gp3.metadata[0].name
+  }
 
   depends_on = [
     module.eks,
