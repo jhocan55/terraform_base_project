@@ -1,5 +1,4 @@
 locals {
-  # Standard namespaces
   ns_cert_manager = "cert-manager"
   ns_kube_system  = "kube-system"
   ns_wordpress    = "wordpress"
@@ -7,7 +6,7 @@ locals {
 
 # -------------------------------
 # AWS Load Balancer Controller
-# (Assumes IRSA role + policy already created/bound in your modules)
+# (no IRSA annotation to avoid missing module refs)
 # -------------------------------
 resource "helm_release" "aws_load_balancer_controller" {
   name             = "aws-load-balancer-controller"
@@ -16,21 +15,19 @@ resource "helm_release" "aws_load_balancer_controller" {
   namespace        = local.ns_kube_system
   create_namespace = false
 
-  # Ensure we pass clusterName and serviceAccount if using IRSA
+  # Minimum values; controller can autodiscover VPC in EKS
   values = [yamlencode({
     clusterName = module.eks.cluster_name
+    region      = var.region
+
     serviceAccount = {
-      create = false
+      create = true
       name   = "aws-load-balancer-controller"
-      annotations = {
-        "eks.amazonaws.com/role-arn" = module.alb_controller_irsa_role_arn # <- adjust to your output
-      }
+      # No IRSA annotation here to avoid undeclared module reference.
+      # Add later: annotations = { "eks.amazonaws.com/role-arn" = module.alb_controller_irsa_role_arn }
     }
-    region = var.region
-    vpcId  = module.vpc.vpc_id
   })]
 
-  # Make sure it waits for the CRDs it manages
   depends_on = [module.eks]
 }
 
@@ -52,7 +49,7 @@ resource "helm_release" "cert_manager" {
   depends_on = [module.eks]
 }
 
-# Give time for CRDs to register so kubernetes_manifest doesn't race
+# Allow CRDs to register before kubernetes_manifest
 resource "time_sleep" "after_cert_manager" {
   depends_on      = [helm_release.cert_manager]
   create_duration = "20s"
@@ -74,9 +71,7 @@ resource "kubernetes_manifest" "letsencrypt_clusterissuer" {
         solvers = [
           {
             http01 = {
-              ingress = {
-                class = "alb"
-              }
+              ingress = { class = "alb" }
             }
           }
         ]
@@ -91,7 +86,7 @@ resource "kubernetes_manifest" "letsencrypt_clusterissuer" {
 }
 
 # -------------------------------
-# external-dns (IRSA)
+# external-dns (no IRSA annotation to avoid missing module refs)
 # -------------------------------
 resource "helm_release" "external_dns" {
   name             = "external-dns"
@@ -101,18 +96,17 @@ resource "helm_release" "external_dns" {
   create_namespace = false
 
   values = [yamlencode({
-    provider = "aws"
-    domainFilters = [var.domain_name] # or use zoneIdFilters
-    policy = "sync"
-    registry = "txt"
-    txtOwnerId = module.eks.cluster_name
+    provider      = "aws"
+    policy        = "sync"
+    registry      = "txt"
+    txtOwnerId    = module.eks.cluster_name
+    domainFilters = [var.domain_name]
 
     serviceAccount = {
-      create = false
+      create = true
       name   = "external-dns"
-      annotations = {
-        "eks.amazonaws.com/role-arn" = module.external_dns_irsa_role_arn # <- adjust to your output
-      }
+      # Add later when you export the IRSA role:
+      # annotations = { "eks.amazonaws.com/role-arn" = module.external_dns_irsa_role_arn }
     }
   })]
 
@@ -120,7 +114,7 @@ resource "helm_release" "external_dns" {
 }
 
 # -------------------------------
-# Bitnami WordPress (external DB + ALB ingress)
+# Bitnami WordPress (external RDS + ALB ingress)
 # -------------------------------
 resource "helm_release" "wordpress" {
   name             = "wordpress"
@@ -129,13 +123,11 @@ resource "helm_release" "wordpress" {
   namespace        = local.ns_wordpress
   create_namespace = true
 
-  # Pin a proven chart version if you prefer:
-  # version = "22.2.5"
-
   values = [yamlencode({
     mariadb = { enabled = false }
+
     externalDatabase = {
-      host     = module.rds.endpoint          # <- adjust to your output
+      host     = module.rds.endpoint
       user     = var.db_username
       password = var.db_password
       database = var.db_name
@@ -149,13 +141,13 @@ resource "helm_release" "wordpress" {
       ingressClassName = "alb"
       hostname         = var.wp_fqdn
       annotations = {
-        "kubernetes.io/ingress.class"                   = "alb"
-        "alb.ingress.kubernetes.io/scheme"              = "internet-facing"
-        "alb.ingress.kubernetes.io/target-type"         = "ip"
-        "alb.ingress.kubernetes.io/listen-ports"        = "[{\"HTTP\":80},{\"HTTPS\":443}]"
-        "alb.ingress.kubernetes.io/actions.ssl-redirect"= "{\"Type\":\"redirect\",\"RedirectConfig\":{\"Protocol\":\"HTTPS\",\"Port\":\"443\",\"StatusCode\":\"HTTP_301\"}}"
-        "alb.ingress.kubernetes.io/group.name"          = "wordpress"
-        "alb.ingress.kubernetes.io/certificate-arn"     = "" # not required when using cert-manager HTTP-01
+        "kubernetes.io/ingress.class"                    = "alb"
+        "alb.ingress.kubernetes.io/scheme"               = "internet-facing"
+        "alb.ingress.kubernetes.io/target-type"          = "ip"
+        "alb.ingress.kubernetes.io/listen-ports"         = "[{\"HTTP\":80},{\"HTTPS\":443}]"
+        "alb.ingress.kubernetes.io/actions.ssl-redirect" = "{\"Type\":\"redirect\",\"RedirectConfig\":{\"Protocol\":\"HTTPS\",\"Port\":\"443\",\"StatusCode\":\"HTTP_301\"}}"
+        "alb.ingress.kubernetes.io/group.name"           = "wordpress"
+        # When using cert-manager HTTP-01 you do NOT need to pre-provide a certificate-arn.
       }
       tls = [{
         hosts      = [var.wp_fqdn]
@@ -169,10 +161,6 @@ resource "helm_release" "wordpress" {
         }
       }]
     }
-
-    # Bitnami chart auth: you can set or let it auto-generate
-    # wordpressUsername = "admin"
-    # wordpressPassword = "CHANGEME"
   })]
 
   depends_on = [

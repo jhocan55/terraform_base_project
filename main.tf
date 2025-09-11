@@ -39,5 +39,7 @@ module "rds" {
 
   # Only allow from the EKS cluster security group
   allowed_cidr_blocks         = []
-  allowed_security_group_ids  = [ data.aws_eks_cluster.this.vpc_config[0].cluster_security_group_id ]
+  # fixed
+  allowed_security_group_ids = [ module.eks.cluster_security_group_id ]
+
 }
