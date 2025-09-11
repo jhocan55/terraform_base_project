@@ -1,33 +1,43 @@
-variable "aws_region"  { default = "eu-west-3" }
-variable "aws_profile" { default = "student20" }
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "eu-west-3"
+}
 
-variable "namespace"   { default = "datascientest" }
+variable "aws_profile" {
+  description = "AWS CLI profile to use"
+  type        = string
+}
 
-# Route53 domain (must already exist)
 variable "domain_name" {
-  description = "Root domain name in Route53, e.g. example.com"
+  description = "Base domain (must exist as Route53 hosted zone)"
   type        = string
 }
+
 variable "wp_fqdn" {
-  description = "WordPress FQDN, e.g. wordpress.example.com"
+  description = "WordPress hostname (e.g., blog.example.com)"
   type        = string
 }
+
+variable "db_name" {
+  description = "RDS DB name"
+  type        = string
+  default     = "wordpress"
+}
+
+variable "db_username" {
+  description = "RDS master username"
+  type        = string
+  default     = "wpadmin"
+}
+
+variable "db_password" {
+  description = "RDS master password"
+  type        = string
+  sensitive   = true
+}
+
 variable "acme_email" {
-  description = "Email for Let's Encrypt registration"
+  description = "Email used for Let's Encrypt registration"
   type        = string
-  default     = "admin@example.com"
 }
-
-# RDS
-variable "db_name"           { default = "wordpress_db" }
-variable "db_username"       { default = "wp_user" }
-variable "db_password"       { sensitive = true }
-variable "db_instance_class" { default = "db.t3.micro" }
-variable "db_multi_az"       { default = false }
-
-# EKS
-variable "cluster_version" { default = "1.29" }
-variable "instance_types"  { default = ["t3.medium"] }
-variable "desired_size"    { default = 2 }
-variable "min_size"        { default = 1 }
-variable "max_size"        { default = 3 }

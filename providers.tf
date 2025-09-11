@@ -1,39 +1,38 @@
 terraform {
   required_version = ">= 1.5.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = ">= 5.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = ">= 2.31"
+      version = ">= 2.29"
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.11.0"
+      version = ">= 2.13"
     }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
+    time = {
+      source  = "hashicorp/time"
+      version = ">= 0.11"
     }
   }
 }
 
 provider "aws" {
-  region  = var.aws_region
+  region  = var.region
   profile = var.aws_profile
 }
 
-# Bind providers AFTER the cluster exists
+# ---- EKS connection for k8s/helm providers ----
 data "aws_eks_cluster" "this" {
-  name       = module.eks.cluster_name
-  depends_on = [module.eks]
+  name = module.eks.cluster_name
 }
 
 data "aws_eks_cluster_auth" "this" {
-  name       = module.eks.cluster_name
-  depends_on = [module.eks]
+  name = module.eks.cluster_name
 }
 
 provider "kubernetes" {

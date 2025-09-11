@@ -1,0 +1,39 @@
+# Fill these with your real values, then rename this file to terraform.tfvars
+
+# AWS basics (optional override of defaults)
+aws_region  = "eu-west-3"
+aws_profile = "student20"
+
+# Existing network
+existing_vpc_id             = "vpc-xxxxxxxx"
+existing_private_subnet_ids = [
+  "subnet-aaaaaaaa",
+  "subnet-bbbbbbbb"
+]
+
+# Precreated IAM roles
+existing_cluster_role_arn = "arn:aws:iam::123456789012:role/your-eks-cluster-role"
+existing_node_role_arn    = "arn:aws:iam::123456789012:role/your-eks-nodes-role"
+ebs_csi_role_arn          = "arn:aws:iam::123456789012:role/your-ebs-csi-role"
+alb_controller_role_arn   = "arn:aws:iam::123456789012:role/your-alb-controller-role"
+external_dns_role_arn     = "arn:aws:iam::123456789012:role/your-external-dns-role"
+
+# DNS / TLS
+domain_name = "example.com"
+wp_fqdn     = "wordpress.example.com"
+acme_email  = "admin@example.com"
+
+# Database
+db_name        = "wordpress_db"
+db_username    = "wp_user"
+# CHANGE THIS before apply
+db_password    = "CHANGE_ME_STRONG_PASSWORD"
+
+# EKS node group
+instance_types = ["t3.medium"]
+desired_size   = 2
+min_size       = 1
+max_size       = 3
+
+# Phase 1: leave false; Phase 2: set true to create ClusterIssuer
+enable_clusterissuer = false

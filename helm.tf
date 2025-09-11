@@ -1,237 +1,66 @@
-########################################
-# IRSA OIDC provider (needed by IRSA roles)
-########################################
-data "tls_certificate" "eks" { url = module.eks.cluster_oidc_issuer_url }
-
-resource "aws_iam_openid_connect_provider" "eks" {
-  url             = module.eks.cluster_oidc_issuer_url
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
+locals {
+  # Standard namespaces
+  ns_cert_manager = "cert-manager"
+  ns_kube_system  = "kube-system"
+  ns_wordpress    = "wordpress"
 }
 
-########################################
-# EBS CSI driver via IRSA + EKS Add-on
-########################################
-data "aws_iam_policy_document" "ebs_csi_assume" {
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.eks.arn]
-    }
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
-    }
-  }
-}
-
-resource "aws_iam_role" "ebs_csi" {
-  name               = "${var.namespace}-ebs-csi-role"
-  assume_role_policy = data.aws_iam_policy_document.ebs_csi_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "ebs_csi" {
-  role       = aws_iam_role.ebs_csi.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-}
-
-resource "aws_eks_addon" "ebs_csi" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "aws-ebs-csi-driver"
-  service_account_role_arn = aws_iam_role.ebs_csi.arn
-  resolve_conflicts        = "OVERWRITE"
-  depends_on               = [aws_iam_role_policy_attachment.ebs_csi]
-}
-
-# StorageClass (gp3) used by WordPress PVC
-resource "kubernetes_storage_class_v1" "gp3" {
-  metadata {
-    name = "gp3"
-    annotations = { "storageclass.kubernetes.io/is-default-class" = "false" }
-  }
-  storage_provisioner = "ebs.csi.aws.com"
-  reclaim_policy      = "Delete"
-  volume_binding_mode = "WaitForFirstConsumer"
-  parameters          = { type = "gp3" }
-  depends_on          = [aws_eks_addon.ebs_csi]
-}
-
-########################################
-# AWS Load Balancer Controller (IRSA + Helm)
-########################################
-data "aws_iam_policy_document" "alb_irsa" {
-  statement {
-    effect = "Allow"
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.eks.arn]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:kube-system:aws-load-balancer-controller"]
-    }
-  }
-}
-
-resource "aws_iam_role" "alb_irsa" {
-  name               = "${var.namespace}-alb-irsa"
-  assume_role_policy = data.aws_iam_policy_document.alb_irsa.json
-}
-
-# NOTE: Replace with the full, official policy from AWS docs for production use.
-resource "aws_iam_policy" "alb_controller" {
-  name   = "${var.namespace}-alb-controller-policy"
-  policy = file("${path.module}/policies/aws-load-balancer-controller.json")
-}
-
-resource "aws_iam_role_policy_attachment" "alb_attach" {
-  role       = aws_iam_role.alb_irsa.name
-  policy_arn = aws_iam_policy.alb_controller.arn
-}
-
+# -------------------------------
+# AWS Load Balancer Controller
+# (Assumes IRSA role + policy already created/bound in your modules)
+# -------------------------------
 resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  version    = "1.8.1"
+  name             = "aws-load-balancer-controller"
+  repository       = "https://aws.github.io/eks-charts"
+  chart            = "aws-load-balancer-controller"
+  namespace        = local.ns_kube_system
+  create_namespace = false
 
-  set {
-    name  = "clusterName"
-    value = module.eks.cluster_name
-  }
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.alb_irsa.arn
-  }
-
-  depends_on = [aws_iam_role_policy_attachment.alb_attach]
-}
-
-########################################
-# external-dns (IRSA + Helm)
-########################################
-data "aws_iam_policy_document" "extdns_irsa" {
-  statement {
-    effect = "Allow"
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+  # Ensure we pass clusterName and serviceAccount if using IRSA
+  values = [yamlencode({
+    clusterName = module.eks.cluster_name
+    serviceAccount = {
+      create = false
+      name   = "aws-load-balancer-controller"
+      annotations = {
+        "eks.amazonaws.com/role-arn" = module.alb_controller_irsa_role_arn # <- adjust to your output
+      }
     }
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:kube-system:external-dns"]
-    }
-  }
+    region = var.region
+    vpcId  = module.vpc.vpc_id
+  })]
+
+  # Make sure it waits for the CRDs it manages
+  depends_on = [module.eks]
 }
 
-resource "aws_iam_role" "extdns_irsa" {
-  name               = "${var.namespace}-external-dns-irsa"
-  assume_role_policy = data.aws_iam_policy_document.extdns_irsa.json
-}
-
-resource "aws_iam_policy" "extdns" {
-  name = "${var.namespace}-external-dns-policy"
-  policy = <<JSON
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["route53:ChangeResourceRecordSets"],
-    "Resource": ["arn:aws:route53:::hostedzone/*"]
-  },{
-    "Effect":"Allow",
-    "Action": ["route53:ListHostedZones", "route53:ListResourceRecordSets"],
-    "Resource": ["*"]
-  }]
-}
-JSON
-}
-
-resource "aws_iam_role_policy_attachment" "extdns_attach" {
-  role       = aws_iam_role.extdns_irsa.name
-  policy_arn = aws_iam_policy.extdns.arn
-}
-
-resource "helm_release" "external_dns" {
-  name       = "external-dns"
-  namespace  = "kube-system"
-  repository = "https://charts.bitnami.com/bitnami"
-  chart      = "external-dns"
-  version    = "9.0.3"
-
-  set { 
-    name = "provider"         
-    value = "aws" 
-    }
-  set { 
-    name = "policy"           
-    value = "sync" 
-  }
-  set { 
-    name = "sources[0]"       
-    value = "ingress" 
-  }
-  set { 
-    name = "domainFilters[0]" 
-    value = var.domain_name 
-  }
-  set { 
-    name = "registry"         
-    value = "txt" 
-  }
-  set { 
-    name = "txtOwnerId"       
-    value = module.eks.cluster_name 
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-  set {
-    name  = "serviceAccount.name"
-    value = "external-dns"
-  }
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.extdns_irsa.arn
-  }
-
-  depends_on = [aws_iam_role_policy_attachment.extdns_attach]
-}
-
-########################################
-# cert-manager (Helm) + ClusterIssuer (HTTP-01 via ALB)
-########################################
+# -------------------------------
+# cert-manager (with CRDs)
+# -------------------------------
 resource "helm_release" "cert_manager" {
   name             = "cert-manager"
-  namespace        = "cert-manager"
   repository       = "https://charts.jetstack.io"
   chart            = "cert-manager"
-  version          = "v1.14.4"
+  namespace        = local.ns_cert_manager
   create_namespace = true
-  set {
-    name  = "installCRDs"
-    value = "true"
-  }
+  version          = "v1.15.3"
+
+  values = [yamlencode({
+    installCRDs = true
+  })]
+
+  depends_on = [module.eks]
 }
 
+# Give time for CRDs to register so kubernetes_manifest doesn't race
+resource "time_sleep" "after_cert_manager" {
+  depends_on      = [helm_release.cert_manager]
+  create_duration = "20s"
+}
+
+# -------------------------------
+# ClusterIssuer (HTTP-01 via ALB)
+# -------------------------------
 resource "kubernetes_manifest" "letsencrypt_clusterissuer" {
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -242,68 +71,113 @@ resource "kubernetes_manifest" "letsencrypt_clusterissuer" {
         email  = var.acme_email
         server = "https://acme-v02.api.letsencrypt.org/directory"
         privateKeySecretRef = { name = "letsencrypt-key" }
-        solvers = [{
-          http01 = { ingress = { class = "alb" } }
-        }]
+        solvers = [
+          {
+            http01 = {
+              ingress = {
+                class = "alb"
+              }
+            }
+          }
+        ]
       }
     }
   }
-  depends_on = [helm_release.cert_manager, helm_release.aws_load_balancer_controller]
+
+  depends_on = [
+    helm_release.aws_load_balancer_controller,
+    time_sleep.after_cert_manager
+  ]
 }
 
-########################################
-# WordPress (Bitnami) via Helm using external RDS
-########################################
+# -------------------------------
+# external-dns (IRSA)
+# -------------------------------
+resource "helm_release" "external_dns" {
+  name             = "external-dns"
+  repository       = "https://kubernetes-sigs.github.io/external-dns/"
+  chart            = "external-dns"
+  namespace        = local.ns_kube_system
+  create_namespace = false
+
+  values = [yamlencode({
+    provider = "aws"
+    domainFilters = [var.domain_name] # or use zoneIdFilters
+    policy = "sync"
+    registry = "txt"
+    txtOwnerId = module.eks.cluster_name
+
+    serviceAccount = {
+      create = false
+      name   = "external-dns"
+      annotations = {
+        "eks.amazonaws.com/role-arn" = module.external_dns_irsa_role_arn # <- adjust to your output
+      }
+    }
+  })]
+
+  depends_on = [module.eks]
+}
+
+# -------------------------------
+# Bitnami WordPress (external DB + ALB ingress)
+# -------------------------------
 resource "helm_release" "wordpress" {
   name             = "wordpress"
   repository       = "https://charts.bitnami.com/bitnami"
   chart            = "wordpress"
-  namespace        = "default"
+  namespace        = local.ns_wordpress
   create_namespace = true
 
-  wait         = true
-  atomic       = true
-  timeout      = 1800
-  force_update = true
-  replace      = true
+  # Pin a proven chart version if you prefer:
+  # version = "22.2.5"
 
-  values = [file("${path.module}/helm/values-wordpress.yaml")]
+  values = [yamlencode({
+    mariadb = { enabled = false }
+    externalDatabase = {
+      host     = module.rds.endpoint          # <- adjust to your output
+      user     = var.db_username
+      password = var.db_password
+      database = var.db_name
+      port     = 3306
+    }
 
-  set {
-    name  = "ingress.hostname"
-    value = var.wp_fqdn
-  }
+    service = { type = "ClusterIP" }
 
-  set {
-    name  = "externalDatabase.host"
-    value = module.rds.endpoint
-  }
-  set {
-    name  = "externalDatabase.user"
-    value = var.db_username
-  }
-  set {
-    name  = "externalDatabase.password"
-    value = var.db_password
-  }
-  set {
-    name  = "externalDatabase.database"
-    value = var.db_name
-  }
+    ingress = {
+      enabled          = true
+      ingressClassName = "alb"
+      hostname         = var.wp_fqdn
+      annotations = {
+        "kubernetes.io/ingress.class"                   = "alb"
+        "alb.ingress.kubernetes.io/scheme"              = "internet-facing"
+        "alb.ingress.kubernetes.io/target-type"         = "ip"
+        "alb.ingress.kubernetes.io/listen-ports"        = "[{\"HTTP\":80},{\"HTTPS\":443}]"
+        "alb.ingress.kubernetes.io/actions.ssl-redirect"= "{\"Type\":\"redirect\",\"RedirectConfig\":{\"Protocol\":\"HTTPS\",\"Port\":\"443\",\"StatusCode\":\"HTTP_301\"}}"
+        "alb.ingress.kubernetes.io/group.name"          = "wordpress"
+        "alb.ingress.kubernetes.io/certificate-arn"     = "" # not required when using cert-manager HTTP-01
+      }
+      tls = [{
+        hosts      = [var.wp_fqdn]
+        secretName = "wp-tls"
+      }]
+      extraPaths = [{
+        path = "/*"
+        backend = {
+          serviceName = "ssl-redirect"
+          servicePort = "use-annotation"
+        }
+      }]
+    }
 
-  set {
-    name  = "persistence.storageClass"
-    value = kubernetes_storage_class_v1.gp3.metadata[0].name
-  }
+    # Bitnami chart auth: you can set or let it auto-generate
+    # wordpressUsername = "admin"
+    # wordpressPassword = "CHANGEME"
+  })]
 
   depends_on = [
-    module.eks,
-    aws_eks_addon.ebs_csi,
-    kubernetes_storage_class_v1.gp3,
-    module.rds,
     helm_release.aws_load_balancer_controller,
     helm_release.external_dns,
-    helm_release.cert_manager,
     kubernetes_manifest.letsencrypt_clusterissuer
   ]
 }
