@@ -1,51 +1,25 @@
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-  default     = "eu-west-3"
-}
-
+# -------- Global / provider inputs --------
 variable "aws_profile" {
   description = "AWS CLI profile to use"
   type        = string
+  default     = "default"
 }
 
-variable "domain_name" {
-  description = "Base domain (must exist as Route53 hosted zone)"
+variable "region" {
+  description = "Preferred AWS region. If empty, aws_region may be used."
   type        = string
+  default     = ""
 }
 
-variable "wp_fqdn" {
-  description = "WordPress hostname (e.g., blog.example.com)"
+variable "aws_region" {
+  description = "Legacy/alternate region (present in terraform.tfvars). Used when region is empty."
   type        = string
+  default     = ""
 }
 
-variable "db_name" {
-  description = "RDS DB name"
-  type        = string
-  default     = "wordpress"
-}
-
-variable "db_username" {
-  description = "RDS master username"
-  type        = string
-  default     = "wpadmin"
-}
-
-variable "db_password" {
-  description = "RDS master password"
-  type        = string
-  sensitive   = true
-}
-
-variable "acme_email" {
-  description = "Email used for Let's Encrypt registration"
-  type        = string
-}
-
-# --------- NEW / MISSING (to satisfy main.tf references) ---------
-
+# -------- Project naming --------
 variable "namespace" {
-  description = "Project namespace prefix used for names (e.g. 'demo', 'prod')"
+  description = "Project namespace/prefix for names (e.g. demo, prod)"
   type        = string
   default     = "demo"
   validation {
@@ -54,6 +28,7 @@ variable "namespace" {
   }
 }
 
+# -------- EKS --------
 variable "cluster_version" {
   description = "EKS Kubernetes version (e.g., 1.29)"
   type        = string
@@ -61,9 +36,14 @@ variable "cluster_version" {
 }
 
 variable "instance_types" {
-  description = "Node group instance types"
+  description = "EKS node group instance types"
   type        = list(string)
   default     = ["t3.medium"]
+}
+variable "kubeconfig_path" {
+  description = "Path to kubeconfig used by kubernetes/helm providers"
+  type        = string
+  default     = "~/.kube/config"
 }
 
 variable "desired_size" {
@@ -84,8 +64,9 @@ variable "max_size" {
   default     = 3
 }
 
+# -------- RDS (MariaDB) --------
 variable "db_instance_class" {
-  description = "RDS instance class (MariaDB)"
+  description = "RDS instance class"
   type        = string
   default     = "db.t3.micro"
 }
@@ -94,4 +75,38 @@ variable "db_multi_az" {
   description = "Enable Multi-AZ for RDS"
   type        = bool
   default     = false
+}
+
+variable "db_name" {
+  description = "Database name"
+  type        = string
+  default     = "wordpress"
+}
+
+variable "db_username" {
+  description = "Database master username"
+  type        = string
+  default     = "wpadmin"
+}
+
+variable "db_password" {
+  description = "Database master password"
+  type        = string
+  sensitive   = true
+}
+
+# -------- DNS / Ingress / TLS --------
+variable "domain_name" {
+  description = "Base domain (must exist in Route53)"
+  type        = string
+}
+
+variable "wp_fqdn" {
+  description = "WordPress FQDN (e.g., blog.example.com)"
+  type        = string
+}
+
+variable "acme_email" {
+  description = "Email for Let's Encrypt registration"
+  type        = string
 }

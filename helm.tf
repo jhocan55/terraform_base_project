@@ -4,6 +4,13 @@ locals {
   ns_wordpress    = "wordpress"
 }
 
+# Wait a short time after EKS is created for DNS/endpoint readiness
+resource "time_sleep" "wait_after_eks" {
+  depends_on      = [module.eks]
+  create_duration = "45s"
+}
+
+
 # -------------------------------
 # AWS Load Balancer Controller
 # (no IRSA annotation to avoid missing module refs)
@@ -28,7 +35,8 @@ resource "helm_release" "aws_load_balancer_controller" {
     }
   })]
 
-  depends_on = [module.eks]
+  depends_on = [time_sleep.wait_after_eks]
+
 }
 
 # -------------------------------
@@ -46,7 +54,7 @@ resource "helm_release" "cert_manager" {
     installCRDs = true
   })]
 
-  depends_on = [module.eks]
+  depends_on = [time_sleep.wait_after_eks]
 }
 
 # Allow CRDs to register before kubernetes_manifest
