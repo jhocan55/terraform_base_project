@@ -1,4 +1,5 @@
 resource "aws_db_subnet_group" "this" {
+  count       = var.existing_db_subnet_group_name == "" ? 1 : 0
   name        = "${var.namespace}-db-subnet-group"
   description = "DB subnet group for ${var.namespace}"
   subnet_ids  = var.db_subnet_ids
@@ -6,32 +7,9 @@ resource "aws_db_subnet_group" "this" {
 }
 
 resource "aws_security_group" "rds" {
+  count  = var.existing_rds_security_group_id == "" ? 1 : 0
   name   = "${var.namespace}-rds-sg"
   vpc_id = var.vpc_id
-
-  # Allow from EKS SGs
-  dynamic "ingress" {
-    for_each = var.allowed_security_group_ids
-    content {
-      from_port       = 3306
-      to_port         = 3306
-      protocol        = "tcp"
-      security_groups = [ingress.value]
-      description     = "Access from EKS"
-    }
-  }
-
-  # Optional: allow from CIDRs
-  dynamic "ingress" {
-    for_each = var.allowed_cidr_blocks
-    content {
-      from_port   = 3306
-      to_port     = 3306
-      protocol    = "tcp"
-      cidr_blocks = [ingress.value]
-      description = "VPC access"
-    }
-  }
 
   egress {
     from_port   = 0
@@ -39,8 +17,17 @@ resource "aws_security_group" "rds" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = { Name = "${var.namespace}-rds-sg" }
 }
 
+// Resolve which names/ids to use
+locals {
+  db_subnet_group_name = var.existing_db_subnet_group_name != "" ? var.existing_db_subnet_group_name : aws_db_subnet_group.this[0].name
+  rds_sg_id            = var.existing_rds_security_group_id != "" ? var.existing_rds_security_group_id : aws_security_group.rds[0].id
+}
+
+// Ensure your DB instance uses the resolved values
 resource "aws_db_instance" "mariadb" {
   identifier             = "${var.namespace}-mariadb"
   engine                 = "mariadb"
@@ -54,7 +41,7 @@ resource "aws_db_instance" "mariadb" {
   multi_az               = var.multi_az
   skip_final_snapshot    = true
   deletion_protection    = false
-  db_subnet_group_name   = aws_db_subnet_group.this.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = local.db_subnet_group_name
+  vpc_security_group_ids = concat([local.rds_sg_id], var.allowed_security_group_ids)
   publicly_accessible    = false
 }

@@ -4,7 +4,7 @@ terraform {
   required_providers {
     aws         = { source = "hashicorp/aws",        version = ">= 5.0.0" }
     kubernetes  = { source = "hashicorp/kubernetes", version = ">= 2.29.0" }
-    helm        = { source = "hashicorp/helm",       version = ">= 3.0.0" }
+    helm        = { source = "hashicorp/helm",       version = ">= 2.13.1" }
     time        = { source = "hashicorp/time",       version = ">= 0.11.0" }
   }
 }
@@ -22,7 +22,7 @@ provider "kubernetes" {
   config_path = pathexpand(var.kubeconfig_path)
 }
 
-# Helm v3 uses argument form for kubernetes connection
+# Helm v3 uses nested kubernetes block
 provider "helm" {
   kubernetes = {
     config_path = pathexpand(var.kubeconfig_path)

@@ -95,6 +95,18 @@ variable "db_password" {
   sensitive   = true
 }
 
+variable "existing_db_subnet_group_name" {
+  description = "If non-empty, reuse this DB subnet group name instead of creating one"
+  type        = string
+  default     = ""
+}
+
+variable "existing_rds_security_group_id" {
+  description = "Existing RDS security group ID to reuse (skip creation)"
+  type        = string
+  default     = ""
+}
+
 # -------- DNS / Ingress / TLS --------
 variable "domain_name" {
   description = "Base domain (must exist in Route53)"
@@ -108,5 +120,44 @@ variable "wp_fqdn" {
 
 variable "acme_email" {
   description = "Email for Let's Encrypt registration"
+  type        = string
+}
+
+variable "enable_acm" {
+  description = "Create ACM certificate and Route53 DNS validation (set true only if you have the hosted zone)"
+  type        = bool
+  default     = false
+}
+
+variable "route53_zone_id" {
+  description = "Optional Route53 hosted zone ID. If empty, lookup by domain_name (public zone)."
+  type        = string
+  default     = ""
+}
+
+variable "enable_apps" {
+  description = "Create Helm-based apps (ALB controller, external-dns, wordpress). Set false for minimal infra."
+  type        = bool
+  default     = false
+}
+
+# -------- VPC and IAM --------
+variable "existing_vpc_id" {
+  description = "ID of an existing VPC to use"
+  type        = string
+}
+
+variable "existing_private_subnet_ids" {
+  description = "Private subnet IDs for EKS nodes and RDS"
+  type        = list(string)
+}
+
+variable "existing_cluster_role_arn" {
+  description = "Precreated IAM role ARN for the EKS control plane"
+  type        = string
+}
+
+variable "existing_node_role_arn" {
+  description = "Precreated IAM role ARN for EKS nodes"
   type        = string
 }

@@ -19,3 +19,17 @@ variable "allowed_cidr_blocks" {
   type    = list(string)
   default = []
 }
+
+# Optional: reuse an existing DB subnet group instead of creating one
+variable "existing_db_subnet_group_name" {
+  type        = string
+  default     = ""
+  description = "If non-empty, use this DB subnet group and do not create a new one"
+}
+
+# Optional: reuse an existing RDS security group instead of creating one
+variable "existing_rds_security_group_id" {
+  type        = string
+  default     = ""
+  description = "If non-empty, use this SG and do not create a new security group"
+}
