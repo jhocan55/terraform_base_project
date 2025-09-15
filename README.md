@@ -26,6 +26,7 @@ cp terraform.tfvars.example terraform.tfvars
 # wp_fqdn         = "blog.example.com"
 # db_password     = "StrongPassword123!"
 # aws_profile     = "myprofile"
+# region          = "eu-west-3"   # optional, defaults to eu-west-3
 ```
 
 ## Deploy
