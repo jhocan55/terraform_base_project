@@ -6,13 +6,13 @@ variable "aws_profile" {
 }
 
 variable "region" {
-  description = "Preferred AWS region. If empty, aws_region may be used."
+  description = "AWS region for all resources. If unset, aws_region (deprecated) is used."
   type        = string
   default     = ""
 }
 
 variable "aws_region" {
-  description = "Legacy/alternate region (present in terraform.tfvars). Used when region is empty."
+  description = "DEPRECATED: fallback AWS region for backward compatibility. Use region instead."
   type        = string
   default     = ""
 }

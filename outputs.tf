@@ -15,7 +15,7 @@ output "cluster_name" {
 
 output "region" {
   description = "AWS region used by this stack"
-  value       = var.aws_region
+  value       = local.effective_region
 }
 
 output "acm_certificate_arn" {

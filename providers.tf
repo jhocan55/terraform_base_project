@@ -9,9 +9,14 @@ terraform {
   }
 }
 
-# Accept either region or aws_region (to match your terraform.tfvars)
+# Determine final AWS region (region takes precedence over aws_region)
+locals {
+  effective_region = coalesce(var.region, var.aws_region, "eu-west-3")
+}
+
+# Use the calculated region for the AWS provider
 provider "aws" {
-  region  = coalesce(var.region, var.aws_region, "eu-west-3")
+  region  = local.effective_region
   profile = var.aws_profile
 }
 

@@ -16,9 +16,9 @@ resource "helm_release" "aws_load_balancer_controller" {
   create_namespace = false
 
   values = [yamlencode({
-    clusterName    = module.eks.cluster_name
-    region         = var.aws_region
-    serviceAccount = {
+      clusterName    = module.eks.cluster_name
+      region         = local.effective_region
+      serviceAccount = {
       create = true
       name   = "aws-load-balancer-controller"
     }
